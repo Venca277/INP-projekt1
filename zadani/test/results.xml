@@ -1,24 +1,7 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1731079070" />
-    <testcase name="test_reset" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="10" time="0.0007457733154296875" sim_time_ns="51.000001" ratio_time="68385.39264523785" />
-    <testcase name="test_init" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="26" time="0.0019741058349609375" sim_time_ns="120.000001" ratio_time="60787.01499931208" />
-    <testcase name="test_increment" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="33" time="0.004008769989013672" sim_time_ns="520.000001" ratio_time="129715.59915512691" />
-    <testcase name="test_decrement" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="48" time="0.0031006336212158203" sim_time_ns="360.000001" ratio_time="116105.30136057701" />
-    <testcase name="test_move" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="56" time="0.002352476119995117" sim_time_ns="260.0000010000001" ratio_time="110521.84495736338" />
-    <testcase name="test_print" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="64" time="0.016966819763183594" sim_time_ns="3555.0000010000003" ratio_time="209526.59665272196">
-      <failure />
-    </testcase>
-    <testcase name="test_input" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="70" time="0.02413201332092285" sim_time_ns="5155.000001" ratio_time="213616.65653194924">
-      <failure />
-    </testcase>
-    <testcase name="test_while_loop" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="80" time="0.022993803024291992" sim_time_ns="5055.000001" ratio_time="219841.84154572448">
-      <failure />
-    </testcase>
-    <testcase name="test_tmp" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="88" time="0.02322220802307129" sim_time_ns="5055.0000009999985" ratio_time="217679.55897982873">
-      <failure />
-    </testcase>
-    <testcase name="test_login_vaclav" classname="cpu" file="&lt;makefun-gen-1&gt;" lineno="1" time="1.0676498413085938" sim_time_ns="250055.000001" ratio_time="234210.68437055484">
+    <property name="random_seed" value="1731240512" />
+    <testcase name="test_input" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="71" time="0.0038297176361083984" sim_time_ns="380.000001" ratio_time="99224.0256611034">
       <failure />
     </testcase>
   </testsuite>
