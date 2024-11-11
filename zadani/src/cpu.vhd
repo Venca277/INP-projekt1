@@ -44,7 +44,8 @@ END cpu;
 --                      Architecture declaration
 -- ----------------------------------------------------------------------------
 ARCHITECTURE behavioral OF cpu IS
-  SIGNAL is_zero : STD_LOGIC;
+
+  CONSTANT MASK : STD_LOGIC_VECTOR(12 DOWNTO 0) := "1111111111111";
 
   --POINTER PART SIGNALS
   SIGNAL ptr : STD_LOGIC_VECTOR(12 DOWNTO 0);
@@ -63,16 +64,37 @@ ARCHITECTURE behavioral OF cpu IS
   SIGNAL cnt_decrement : STD_LOGIC;
 
   --TMP SIGNALS
-  SIGNAL tmp_in : STD_LOGIC_VECTOR(7 DOWNTO 0);
-  SIGNAL tmp_out : STD_LOGIC_VECTOR(7 DOWNTO 0);
   SIGNAL tmp : STD_LOGIC_VECTOR(7 DOWNTO 0);
   SIGNAL load : STD_LOGIC;
 
-  --
-  SIGNAL acc_data : STD_LOGIC_VECTOR(7 DOWNTO 0);
-
   TYPE t_fsm IS (
-    sinit
+    state_reset,
+    state_enable,
+    state_ready,
+    state_start_search,
+    state_fetch,
+    state_decode,
+    state_inc_ptr,
+    state_dec_ptr,
+    state_inc_cell_path,
+    state_inc_cell,
+    state_inc_cell_done,
+    state_dec_cell_path,
+    state_dec_cell,
+    state_dec_cell_done,
+    state_left_brace,
+    state_right_brace,
+    state_save_tmp,
+    state_tmp_to_cell,
+    state_print_cell_set,
+    state_print_cell,
+    state_read_to_cell_set,
+    state_read_to_cell,
+    state_read_to_cell_end,
+    state_wait,
+    state_busy,
+    state_not_vld,
+    state_halt
 
   );
   SIGNAL curr_state, next_state : t_fsm;
@@ -80,6 +102,195 @@ ARCHITECTURE behavioral OF cpu IS
   SIGNAL mx2_selection : STD_LOGIC_VECTOR(1 DOWNTO 0);
 
 BEGIN
+
+  fsm_logic : PROCESS (RESET, CLK, EN)
+  BEGIN
+    IF RESET = '1' THEN
+      curr_state <= state_reset;
+    ELSIF clk = '1' AND clk'event THEN
+      IF EN = '1' THEN
+        curr_state <= next_state;
+      END IF;
+    END IF;
+  END PROCESS;
+
+  final_state_machine : PROCESS (curr_state, OUT_BUSY, IN_VLD, DATA_RDATA, ptr, pc, cnt)
+  BEGIN
+    cnt_increment <= '0';
+    cnt_decrement <= '0';
+    ptr_increment <= '0';
+    ptr_decrement <= '0';
+    pc_decrement <= '0';
+    pc_increment <= '0';
+    mx2_selection <= "00";
+    DATA_RDWR <= '0';
+    DATA_EN <= '0';
+    IN_REQ <= '0';
+    OUT_WE <= '0';
+    OUT_DATA <= DATA_RDATA;
+    load <= '0';
+    OUT_INV <= '0';
+
+    CASE curr_state IS
+      WHEN state_reset =>
+        READY <= '0';
+        DONE <= '0';
+        mx1_selection <= '0';
+        next_state <= state_enable;
+      WHEN state_enable =>
+        DATA_EN <= '1';
+        mx1_selection <= '0';
+        DATA_RDWR <= '1';
+        next_state <= state_start_search;
+      WHEN state_start_search =>
+        IF DATA_RDATA = x"40" THEN
+          ptr_increment <= '1';
+          next_state <= state_ready;
+        ELSE
+          ptr_increment <= '1';
+          next_state <= state_enable;
+        END IF;
+      WHEN state_ready =>
+        READY <= '1';
+        next_state <= state_fetch;
+      WHEN state_fetch =>
+        mx1_selection <= '1';
+        DATA_RDWR <= '1';
+        DATA_EN <= '1';
+        next_state <= state_decode;
+
+      WHEN state_decode =>
+        CASE DATA_RDATA IS
+          WHEN X"3E" =>
+            next_state <= state_inc_ptr;
+          WHEN X"3C" =>
+            next_state <= state_dec_ptr;
+          WHEN X"2B" =>
+            next_state <= state_inc_cell_path;
+          WHEN X"2D" =>
+            next_state <= state_dec_cell_path;
+          WHEN X"5B" =>
+            next_state <= state_left_brace;
+          WHEN X"5D" =>
+            next_state <= state_right_brace;
+          WHEN X"24" =>
+            next_state <= state_save_tmp;
+          WHEN X"21" =>
+            next_state <= state_tmp_to_cell;
+          WHEN X"2E" =>
+            next_state <= state_print_cell_set;
+          WHEN X"2C" =>
+            next_state <= state_read_to_cell_set;
+          WHEN X"40" =>
+            next_state <= state_halt;
+          WHEN OTHERS =>
+            NULL;
+        END CASE;
+
+      WHEN state_inc_ptr =>
+        ptr_increment <= '1';
+        pc_increment <= '1';
+        next_state <= state_wait;
+
+      WHEN state_dec_ptr =>
+        ptr_decrement <= '1';
+        pc_increment <= '1';
+        next_state <= state_wait;
+
+      WHEN state_inc_cell_path =>
+        mx1_selection <= '0';
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        next_state <= state_inc_cell;
+
+      WHEN state_inc_cell =>
+        mx2_selection <= "11";
+        next_state <= state_inc_cell_done;
+
+      WHEN state_inc_cell_done =>
+        mx2_selection <= "11";
+        DATA_EN <= '1';
+        DATA_RDWR <= '0';
+        pc_increment <= '1';
+        next_state <= state_wait;
+
+      WHEN state_dec_cell_path =>
+        mx1_selection <= '0';
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        next_state <= state_dec_cell;
+
+      WHEN state_dec_cell =>
+        mx2_selection <= "10";
+        next_state <= state_dec_cell_done;
+
+      WHEN state_dec_cell_done =>
+        mx2_selection <= "10";
+        DATA_EN <= '1';
+        DATA_RDWR <= '0';
+        pc_increment <= '1';
+        next_state <= state_wait;
+
+      WHEN state_left_brace =>
+        NULL;
+      WHEN state_right_brace =>
+        NULL;
+      WHEN state_save_tmp =>
+        NULL;
+      WHEN state_tmp_to_cell =>
+        NULL;
+      WHEN state_print_cell_set =>
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        mx1_selection <= '0';
+        next_state <= state_print_cell;
+
+      WHEN state_print_cell =>
+        IF OUT_BUSY = '1' THEN
+          next_state <= state_busy;
+        ELSIF OUT_BUSY = '0' THEN
+          OUT_WE <= '1';
+          OUT_DATA <= DATA_RDATA;
+          pc_increment <= '1';
+          next_state <= state_wait;
+        END IF;
+
+      WHEN state_read_to_cell_set =>
+        mx1_selection <= '0';
+        IN_REQ <= '1';
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        next_state <= state_read_to_cell;
+
+      WHEN state_read_to_cell =>
+        IF IN_VLD = '1' THEN
+          next_state <= state_not_vld;  
+          IN_REQ <= '1';
+        ELSE
+          DATA_EN <= '1';
+          DATA_RDWR <= '1';
+          IN_REQ <= '1';
+          mx2_selection <= "00";
+          pc_increment <= '1';
+          next_state <= state_read_to_cell_end;
+        END IF;
+
+      WHEN state_read_to_cell_end =>
+        DATA_RDWR <= '1';
+        next_state <= state_wait;
+
+      WHEN state_halt =>
+        READY <= '1';
+        DONE <= '1';
+        next_state <= state_halt;
+      WHEN state_wait =>
+        next_state <= state_fetch;
+      WHEN state_busy =>
+        next_state <= state_print_cell;
+      WHEN state_not_vld =>
+        next_state <= state_read_to_cell;
+    END CASE;
+  END PROCESS;
 
   ------------------------------------------------------------------
   --                      function of cnt                         --
@@ -103,7 +314,7 @@ BEGIN
   ------------------------------------------------------------------
   --                 function of temp register                    --
   ------------------------------------------------------------------
-  temporary : PROCESS (RESET, CLK, load, tmp_in, tmp_out)
+  temporary : PROCESS (RESET, CLK, load)
   BEGIN
     IF RESET = '1' THEN
       tmp <= "00000000";
@@ -126,19 +337,11 @@ BEGIN
       ptr <= "0000000000000";
     ELSIF clk = '1' AND clk'event THEN
       IF ptr_increment = '1' THEN
-        IF ptr = "1111111111111" THEN
-          ptr <= "0000000000000";
-        ELSE
-          ptr <= ptr + 1;
-        END IF;
+        ptr <= (ptr + 1) AND MASK;
       END IF;
 
       IF ptr_decrement = '1' THEN
-        IF ptr = "0000000000000" THEN
-          ptr <= "1111111111111";
-        ELSE
-          ptr <= ptr - 1;
-        END IF;
+        ptr <= (ptr - 1) AND MASK;
       END IF;
 
     END IF;
@@ -176,11 +379,11 @@ BEGIN
   multiplexor1 : PROCESS (pc, ptr, mx1_selection)
   BEGIN
     IF mx1_selection = '0' THEN
-      DATA_RDATA <= ptr;
+      DATA_ADDR <= ptr;
     ELSIF mx1_selection = '1' THEN
-      DATA_RDATA <= pc;
+      DATA_ADDR <= pc;
     ELSE
-      DATA_RDATA <= "0000000000000";
+      DATA_ADDR <= "0000000000000";
     END IF;
   END PROCESS;
   ----------------------------------------------------------------------
@@ -190,36 +393,24 @@ BEGIN
   ----------------------------------------------------------------------
   --                 function of second multiplexor                   --
   ----------------------------------------------------------------------
-  multiplexor2 : PROCESS (IN_DATA, tmp, mx2_selection)
+  multiplexor2 : PROCESS (CLK, RESET, tmp, mx2_selection)
   BEGIN
-    IF clk = '1' AND clk'event THEN
-      CASE mx2_selection IS
-        WHEN "00" => DATA_WDATA <= IN_DATA;
-        WHEN "01" => DATA_WDATA <= tmp;
-        WHEN "10" => DATA_WDATA <= DATA_RDATA - 1;
-        WHEN "11" => DATA_WDATA <= DATA_RDATA + 1;
-      END CASE;
+    IF (clk'event) AND (clk = '1') THEN
+      IF mx2_selection = "00" THEN
+        DATA_WDATA <= IN_DATA;
+      ELSIF mx2_selection = "01" THEN
+        DATA_WDATA <= tmp;
+      ELSIF mx2_selection = "10" THEN
+        DATA_WDATA <= DATA_RDATA - 1;
+      ELSIF mx2_selection = "11" THEN
+        DATA_WDATA <= DATA_RDATA + 1;
+      ELSE
+      END IF;
     END IF;
   END PROCESS;
   ----------------------------------------------------------------------
   --******************************************************************--
   ----------------------------------------------------------------------
-
-  PROCESS (clk, ptr_reset)
-  BEGIN
-    IF ptr_reset = '1' THEN
-      ptr <= "0000000000000";
-    ELSIF rising_edge(clk) THEN
-      IF ptr_increment = '1' THEN
-        ptr <= ptr + 1;
-      END IF;
-    END IF;
-  END PROCESS;
-  DATA_ADDR <= ptr;
-
-  --is_zero
-  is_zero <= '1' WHEN cnt = 0 ELSE
-    '0';
 
   -- pri tvorbe kodu reflektujte rady ze cviceni INP, zejmena mejte na pameti, ze 
   --   - nelze z vice procesu ovladat stejny signal,
