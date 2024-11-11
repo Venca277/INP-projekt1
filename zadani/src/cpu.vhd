@@ -84,16 +84,27 @@ ARCHITECTURE behavioral OF cpu IS
     state_dec_cell_done,
     state_left_brace,
     state_right_brace,
+
+    state_left_brace_check,
+    state_right_brace_check,
+    state_while_skip_forward,
+    state_while_check_end,
+    state_while_skip_backward,
+    state_while_check_start,
+
     state_save_tmp,
+    state_save_tmp_loaded,
     state_tmp_to_cell,
+    state_tmp_to_cell_loaded,
+    state_tmp_to_cell_end,
     state_print_cell_set,
     state_print_cell,
     state_read_to_cell_set,
     state_read_to_cell,
-    state_read_to_cell_end,
     state_wait,
-    state_busy,
     state_not_vld,
+    state_wait_read,
+    state_busy,
     state_halt
 
   );
@@ -184,7 +195,7 @@ BEGIN
           WHEN X"40" =>
             next_state <= state_halt;
           WHEN OTHERS =>
-            NULL;
+            pc_increment <= '1';
         END CASE;
 
       WHEN state_inc_ptr =>
@@ -231,14 +242,105 @@ BEGIN
         pc_increment <= '1';
         next_state <= state_wait;
 
+        ------------------------------------------
       WHEN state_left_brace =>
-        NULL;
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        mx1_selection <= '0'; -- Set to read from PTR
+        pc_increment <= '1'; -- Increment PC to move to the next instruction
+        next_state <= state_left_brace_check;
+
+      WHEN state_left_brace_check =>
+        -- Check if memory at PTR is zero
+        IF DATA_RDATA = X"00" THEN
+          -- If zero, begin skipping forward to the first `]`
+          next_state <= state_while_skip_forward;
+        ELSE
+          -- Otherwise, continue normal execution
+          next_state <= state_fetch;
+        END IF;
+
+      WHEN state_while_skip_forward =>
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        mx1_selection <= '1'; -- Set to read from PC address
+        pc_increment <= '1'; -- Move PC forward by 1
+        next_state <= state_while_check_end;
+
+      WHEN state_while_check_end =>
+        -- Check if the current instruction is `]`
+        IF DATA_RDATA = X"5D" THEN -- Found `]`, end of loop
+          next_state <= state_fetch; -- Resume normal execution
+        ELSE
+          -- Otherwise, continue moving forward
+          next_state <= state_while_skip_forward;
+        END IF;
+
+        -- Handling for `]` instruction when `mem[PTR] != 0`
       WHEN state_right_brace =>
-        NULL;
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        mx1_selection <= '0'; -- Set to read from PTR
+        next_state <= state_right_brace_check;
+
+      WHEN state_right_brace_check =>
+        -- Check if memory at PTR is non-zero
+        IF DATA_RDATA /= X"00" THEN
+          -- If non-zero, begin skipping backward to the first `[`
+          next_state <= state_while_skip_backward;
+        ELSE
+          -- If zero, continue normal execution
+          pc_increment <= '1'; -- Move to the next instruction
+          next_state <= state_fetch;
+        END IF;
+
+      WHEN state_while_skip_backward =>
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        mx1_selection <= '1'; -- Set to read from PC address
+        pc_decrement <= '1'; -- Move PC backward by 1
+        next_state <= state_while_check_start;
+
+      WHEN state_while_check_start =>
+        -- Check if the current instruction is `[`
+        IF DATA_RDATA = X"5B" THEN -- Found `[`, start of loop
+          pc_increment <= '1'; -- Move PC to the instruction after `[`
+          next_state <= state_fetch; -- Resume normal execution
+        ELSE
+          -- Otherwise, continue moving backward
+          next_state <= state_while_skip_backward;
+        END IF;
+        ------------------------------------------
       WHEN state_save_tmp =>
-        NULL;
+        mx1_selection <= '0';
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        next_state <= state_save_tmp_loaded;
+      WHEN state_save_tmp_loaded =>
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        load <= '1';
+        pc_increment <= '1';
+        next_state <= state_fetch;
+
       WHEN state_tmp_to_cell =>
-        NULL;
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        mx1_selection <= '0';
+        next_state <= state_tmp_to_cell_loaded;
+
+      WHEN state_tmp_to_cell_loaded =>
+        mx2_selection <= "01";
+        DATA_EN <= '1';
+        DATA_RDWR <= '0';
+        pc_increment <= '1';
+        next_state <= state_tmp_to_cell_end;
+
+      WHEN state_tmp_to_cell_end =>
+        DATA_EN <= '1';
+        DATA_RDWR <= '0';
+        next_state <= state_fetch;
+
       WHEN state_print_cell_set =>
         DATA_EN <= '1';
         DATA_RDWR <= '1';
@@ -263,21 +365,17 @@ BEGIN
         next_state <= state_read_to_cell;
 
       WHEN state_read_to_cell =>
-        IF IN_VLD = '1' THEN
-          next_state <= state_not_vld;  
+        IF IN_VLD = '0' THEN
           IN_REQ <= '1';
+          next_state <= state_read_to_cell_set;
         ELSE
           DATA_EN <= '1';
-          DATA_RDWR <= '1';
+          DATA_RDWR <= '0';
           IN_REQ <= '1';
           mx2_selection <= "00";
           pc_increment <= '1';
-          next_state <= state_read_to_cell_end;
+          next_state <= state_wait_read;
         END IF;
-
-      WHEN state_read_to_cell_end =>
-        DATA_RDWR <= '1';
-        next_state <= state_wait;
 
       WHEN state_halt =>
         READY <= '1';
@@ -288,7 +386,13 @@ BEGIN
       WHEN state_busy =>
         next_state <= state_print_cell;
       WHEN state_not_vld =>
-        next_state <= state_read_to_cell;
+        next_state <= state_read_to_cell_set;
+
+      WHEN state_wait_read =>
+        DATA_EN <= '1';
+        DATA_RDWR <= '1';
+        mx1_selection <= '1';
+        next_state <= state_fetch;
     END CASE;
   END PROCESS;
 
@@ -393,7 +497,7 @@ BEGIN
   ----------------------------------------------------------------------
   --                 function of second multiplexor                   --
   ----------------------------------------------------------------------
-  multiplexor2 : PROCESS (CLK, RESET, tmp, mx2_selection)
+  multiplexor2 : PROCESS (CLK, RESET, mx2_selection)
   BEGIN
     IF (clk'event) AND (clk = '1') THEN
       IF mx2_selection = "00" THEN
