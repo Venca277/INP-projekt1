@@ -104,6 +104,13 @@ async def test_while_loop(dut):
 async def test_tmp(dut):
     """Simple temp register test"""
     instcnt, mem, lcd = await run_program(dut, '$+++!@\1', timeout_ns = LCD_WAIT_TIME*10)
+    print(f"mem[0] = {mem[0]}")
+    print(f"mem[1] = {mem[1]}")
+    print(f"mem[2] = {mem[2]}")
+    print(f"mem[3] = {mem[3]}")
+    print(f"mem[4] = {mem[4]}")
+    print(f"mem[5] = {mem[5]}")
+    print(f"mem[6] = {mem[6]}")
     assert mem[6] == 1
 
 @tb_test()
