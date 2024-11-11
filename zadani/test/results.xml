@@ -1,8 +1,6 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1731282604" />
-    <testcase name="test_input" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="71" time="0.0036895275115966797" sim_time_ns="380.000001" ratio_time="102994.21804163515">
-      <failure />
-    </testcase>
+    <property name="random_seed" value="1731339687" />
+    <testcase name="test_input" classname="cpu" file="/home/vaclav/github_projekty/INP-projekt1/zadani/test/scripts/cpu_lib.py" lineno="71" time="0.016637802124023438" sim_time_ns="2580.000001" ratio_time="155068.55904210568" />
   </testsuite>
 </testsuites>
