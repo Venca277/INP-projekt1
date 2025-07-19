@@ -1,7 +1,7 @@
 -- cpu.vhd: Simple 8-bit CPU (BrainFuck interpreter)
 -- Copyright (C) 2024 Brno University of Technology,
 --                    Faculty of Information Technology
--- Author(s): jmeno <login AT stud.fit.vutbr.cz>
+-- Author(s): Václav Sovák <xsovakv00 AT stud.fit.vutbr.cz>
 --
 LIBRARY ieee;
 USE ieee.std_logic_1164.ALL;
@@ -68,6 +68,7 @@ ARCHITECTURE behavioral OF cpu IS
   SIGNAL load : STD_LOGIC;
 
   TYPE t_fsm IS (
+    --vsechny stavy fsm
     state_reset,
     state_enable,
     state_ready,
@@ -84,14 +85,12 @@ ARCHITECTURE behavioral OF cpu IS
     state_dec_cell_done,
     state_left_brace,
     state_right_brace,
-
     state_left_brace_check,
     state_right_brace_check,
     state_while_skip_forward,
     state_while_check_end,
     state_while_skip_backward,
     state_while_check_start,
-
     state_save_tmp,
     state_save_tmp_loaded,
     state_tmp_to_cell,
@@ -106,14 +105,14 @@ ARCHITECTURE behavioral OF cpu IS
     state_wait_read,
     state_busy,
     state_halt
-
   );
   SIGNAL curr_state, next_state : t_fsm;
-  SIGNAL mx1_selection : STD_LOGIC;
-  SIGNAL mx2_selection : STD_LOGIC_VECTOR(1 DOWNTO 0);
+  SIGNAL mx1_selection : STD_LOGIC; --pro multiplexor 1
+  SIGNAL mx2_selection : STD_LOGIC_VECTOR(1 DOWNTO 0); --pro multiplexor 2
 
 BEGIN
 
+  --kratka logika pro zmenu stavu fsm
   fsm_logic : PROCESS (RESET, CLK, EN)
   BEGIN
     IF RESET = '1' THEN
@@ -127,6 +126,7 @@ BEGIN
 
   final_state_machine : PROCESS (curr_state, OUT_BUSY, IN_VLD, DATA_RDATA, ptr, pc, cnt)
   BEGIN
+    --implicitni stavy pri kazde zmene procesu na citlivosti 
     cnt_increment <= '0';
     cnt_decrement <= '0';
     ptr_increment <= '0';
@@ -143,17 +143,17 @@ BEGIN
     OUT_INV <= '0';
 
     CASE curr_state IS
-      WHEN state_reset =>
+      WHEN state_reset => --stav reset, uvede kontroler do puvod. stavu
         READY <= '0';
         DONE <= '0';
         mx1_selection <= '0';
         next_state <= state_enable;
-      WHEN state_enable =>
+      WHEN state_enable => --priprava pro hledani @
         DATA_EN <= '1';
         mx1_selection <= '0';
         DATA_RDWR <= '1';
         next_state <= state_start_search;
-      WHEN state_start_search =>
+      WHEN state_start_search => --hleda konec programu a posune se o 1 vpred
         IF DATA_RDATA = x"40" THEN
           ptr_increment <= '1';
           next_state <= state_ready;
@@ -161,193 +161,180 @@ BEGIN
           ptr_increment <= '1';
           next_state <= state_enable;
         END IF;
-      WHEN state_ready =>
+      WHEN state_ready => --pripraven k vykonavani programu v brainf*cku
         READY <= '1';
         next_state <= state_fetch;
-      WHEN state_fetch =>
+      WHEN state_fetch => --pripava nacteni nove instrukce
         mx1_selection <= '1';
         DATA_RDWR <= '1';
         DATA_EN <= '1';
         next_state <= state_decode;
 
-      WHEN state_decode =>
+      WHEN state_decode => --dekodovani podle instrukci ze sady, ignorovany jsou vsechny ostatni
         CASE DATA_RDATA IS
           WHEN X"3E" =>
-            next_state <= state_inc_ptr;
+            next_state <= state_inc_ptr;              -- >
           WHEN X"3C" =>
-            next_state <= state_dec_ptr;
+            next_state <= state_dec_ptr;              -- <
           WHEN X"2B" =>
-            next_state <= state_inc_cell_path;
+            next_state <= state_inc_cell_path;        -- +
           WHEN X"2D" =>
-            next_state <= state_dec_cell_path;
+            next_state <= state_dec_cell_path;        -- -
           WHEN X"5B" =>
-            next_state <= state_left_brace;
+            next_state <= state_left_brace;           -- [
           WHEN X"5D" =>
-            next_state <= state_right_brace;
+            next_state <= state_right_brace;          -- ]
           WHEN X"24" =>
-            next_state <= state_save_tmp;
+            next_state <= state_save_tmp;             -- $
           WHEN X"21" =>
-            next_state <= state_tmp_to_cell;
+            next_state <= state_tmp_to_cell;          -- !
           WHEN X"2E" =>
-            next_state <= state_print_cell_set;
+            next_state <= state_print_cell_set;       -- .
           WHEN X"2C" =>
-            next_state <= state_read_to_cell_set;
+            next_state <= state_read_to_cell_set;     -- ,
           WHEN X"40" =>
-            next_state <= state_halt;
+            next_state <= state_halt;                 -- @
           WHEN OTHERS =>
-            pc_increment <= '1';
+            pc_increment <= '1'; --ignoruje vsechny ostatni
         END CASE;
 
-      WHEN state_inc_ptr =>
+      WHEN state_inc_ptr => --inkrementace ukazatele
         ptr_increment <= '1';
         pc_increment <= '1';
         next_state <= state_wait;
 
-      WHEN state_dec_ptr =>
+      WHEN state_dec_ptr => --dekrementace ukazatele 
         ptr_decrement <= '1';
         pc_increment <= '1';
         next_state <= state_wait;
 
-      WHEN state_inc_cell_path =>
+      WHEN state_inc_cell_path => --priprava pro inkrementaci bunky
         mx1_selection <= '0';
         DATA_EN <= '1';
         DATA_RDWR <= '1';
         next_state <= state_inc_cell;
 
-      WHEN state_inc_cell =>
+      WHEN state_inc_cell =>  --inkrementace bunky
         mx2_selection <= "11";
         next_state <= state_inc_cell_done;
 
-      WHEN state_inc_cell_done =>
+      WHEN state_inc_cell_done => --unkonceni inkremetace, ulozeni stavu
         mx2_selection <= "11";
         DATA_EN <= '1';
         DATA_RDWR <= '0';
         pc_increment <= '1';
-        next_state <= state_wait;
+        next_state <= state_wait; --cekam aby nedoslo ke kolizi
 
-      WHEN state_dec_cell_path =>
+      WHEN state_dec_cell_path => --priprava pro dekrementaci bunky
         mx1_selection <= '0';
         DATA_EN <= '1';
         DATA_RDWR <= '1';
         next_state <= state_dec_cell;
 
-      WHEN state_dec_cell =>
+      WHEN state_dec_cell => --dekrementace bunky
         mx2_selection <= "10";
         next_state <= state_dec_cell_done;
 
-      WHEN state_dec_cell_done =>
+      WHEN state_dec_cell_done => --unkonceni dekrementace
         mx2_selection <= "10";
         DATA_EN <= '1';
         DATA_RDWR <= '0';
         pc_increment <= '1';
         next_state <= state_wait;
 
-        ------------------------------------------
-      WHEN state_left_brace =>
+      WHEN state_left_brace => --stav uvadejici nas do cyklu, otevreni zavorky
         DATA_EN <= '1';
         DATA_RDWR <= '1';
-        mx1_selection <= '0'; -- Set to read from PTR
-        pc_increment <= '1'; -- Increment PC to move to the next instruction
-        next_state <= state_left_brace_check;
+        mx1_selection <= '0';
+        pc_increment <= '1';
+        next_state <= state_left_brace_check; 
 
-      WHEN state_left_brace_check =>
-        -- Check if memory at PTR is zero
+      WHEN state_left_brace_check => --kontrola prichodu ukoncujici zavorky
         IF DATA_RDATA = X"00" THEN
-          -- If zero, begin skipping forward to the first `]`
           next_state <= state_while_skip_forward;
         ELSE
-          -- Otherwise, continue normal execution
           next_state <= state_fetch;
         END IF;
 
-      WHEN state_while_skip_forward =>
+      WHEN state_while_skip_forward => --posun ukazatele na dalsi instrukci v cyklu
         DATA_EN <= '1';
         DATA_RDWR <= '1';
-        mx1_selection <= '1'; -- Set to read from PC address
-        pc_increment <= '1'; -- Move PC forward by 1
+        mx1_selection <= '1';
+        pc_increment <= '1';
         next_state <= state_while_check_end;
 
-      WHEN state_while_check_end =>
-        -- Check if the current instruction is `]`
-        IF DATA_RDATA = X"5D" THEN -- Found `]`, end of loop
-          next_state <= state_fetch; -- Resume normal execution
+      WHEN state_while_check_end => --hledani ukoncujici zavorky, jinak se vracim k vykonavni
+        IF DATA_RDATA = X"5D" THEN
+          next_state <= state_fetch;
         ELSE
-          -- Otherwise, continue moving forward
           next_state <= state_while_skip_forward;
         END IF;
-
-        -- Handling for `]` instruction when `mem[PTR] != 0`
-      WHEN state_right_brace =>
+      WHEN state_right_brace => --nalezeni uzvaviraci zavorky
         DATA_EN <= '1';
         DATA_RDWR <= '1';
-        mx1_selection <= '0'; -- Set to read from PTR
+        mx1_selection <= '0';
         next_state <= state_right_brace_check;
 
-      WHEN state_right_brace_check =>
-        -- Check if memory at PTR is non-zero
+      WHEN state_right_brace_check => --vyskoceni z cyklu pokud jsou data nula
         IF DATA_RDATA /= X"00" THEN
-          -- If non-zero, begin skipping backward to the first `[`
           next_state <= state_while_skip_backward;
         ELSE
-          -- If zero, continue normal execution
-          pc_increment <= '1'; -- Move to the next instruction
+          pc_increment <= '1';
           next_state <= state_fetch;
         END IF;
 
-      WHEN state_while_skip_backward =>
+      WHEN state_while_skip_backward => --dekrementace ukazatele v programu, posunuti vy cyklu
         DATA_EN <= '1';
         DATA_RDWR <= '1';
-        mx1_selection <= '1'; -- Set to read from PC address
-        pc_decrement <= '1'; -- Move PC backward by 1
+        mx1_selection <= '1';
+        pc_decrement <= '1';
         next_state <= state_while_check_start;
 
-      WHEN state_while_check_start =>
-        -- Check if the current instruction is `[`
-        IF DATA_RDATA = X"5B" THEN -- Found `[`, start of loop
-          pc_increment <= '1'; -- Move PC to the instruction after `[`
-          next_state <= state_fetch; -- Resume normal execution
+      WHEN state_while_check_start => --inkrementace pokud je nalezena zavorka
+        IF DATA_RDATA = X"5B" THEN
+          pc_increment <= '1';
+          next_state <= state_fetch;
         ELSE
-          -- Otherwise, continue moving backward
           next_state <= state_while_skip_backward;
         END IF;
-        ------------------------------------------
-      WHEN state_save_tmp =>
+
+      WHEN state_save_tmp => --priprava ulozeni do docasneho registru
         mx1_selection <= '0';
         DATA_EN <= '1';
         DATA_RDWR <= '1';
         next_state <= state_save_tmp_loaded;
-      WHEN state_save_tmp_loaded =>
+      WHEN state_save_tmp_loaded => --povoleni signalu zacit ulozeni
         DATA_EN <= '1';
         DATA_RDWR <= '1';
         load <= '1';
         pc_increment <= '1';
         next_state <= state_fetch;
 
-      WHEN state_tmp_to_cell =>
+      WHEN state_tmp_to_cell => --ulozeni docasneho registru do bunkky
         DATA_EN <= '1';
         DATA_RDWR <= '1';
         mx1_selection <= '0';
         next_state <= state_tmp_to_cell_loaded;
 
-      WHEN state_tmp_to_cell_loaded =>
+      WHEN state_tmp_to_cell_loaded => --nastaveni modu pro ulozeni
         mx2_selection <= "01";
         DATA_EN <= '1';
         DATA_RDWR <= '0';
         pc_increment <= '1';
         next_state <= state_tmp_to_cell_end;
 
-      WHEN state_tmp_to_cell_end =>
+      WHEN state_tmp_to_cell_end => --ukonceni ukladani, prodlouzeni kvuli kolizi
         DATA_EN <= '1';
         DATA_RDWR <= '0';
         next_state <= state_fetch;
 
-      WHEN state_print_cell_set =>
+      WHEN state_print_cell_set => --priprava tisknuti bunky na vystup
         DATA_EN <= '1';
         DATA_RDWR <= '1';
         mx1_selection <= '0';
         next_state <= state_print_cell;
 
-      WHEN state_print_cell =>
+      WHEN state_print_cell => --tiskneme pokud mame povoleni a neni zaneprazdneno
         IF OUT_BUSY = '1' THEN
           next_state <= state_busy;
         ELSIF OUT_BUSY = '0' THEN
@@ -357,14 +344,14 @@ BEGIN
           next_state <= state_wait;
         END IF;
 
-      WHEN state_read_to_cell_set =>
+      WHEN state_read_to_cell_set => --priprava nacteni do do bunky ze vstupu klavesnice
         mx1_selection <= '0';
         IN_REQ <= '1';
         DATA_EN <= '1';
         DATA_RDWR <= '1';
         next_state <= state_read_to_cell;
 
-      WHEN state_read_to_cell =>
+      WHEN state_read_to_cell => --nacitame pokud mame povoleno a je ocekavan vstup
         IF IN_VLD = '0' THEN
           IN_REQ <= '1';
           next_state <= state_read_to_cell_set;
@@ -377,18 +364,18 @@ BEGIN
           next_state <= state_wait_read;
         END IF;
 
-      WHEN state_halt =>
+      WHEN state_halt => --byl chycen znak @ a ukoncujeme cinnost
         READY <= '1';
         DONE <= '1';
         next_state <= state_halt;
-      WHEN state_wait =>
+      WHEN state_wait => --cekaci stav kvuli kolizim
         next_state <= state_fetch;
-      WHEN state_busy =>
+      WHEN state_busy => --zaneprazdneny stav pro I/O
         next_state <= state_print_cell;
-      WHEN state_not_vld =>
+      WHEN state_not_vld => --stav pro ocekavani vstupu
         next_state <= state_read_to_cell_set;
 
-      WHEN state_wait_read =>
+      WHEN state_wait_read => --stav cekani na zapsani, pokracujume ve cteni pameti propiseme na data_rdata
         DATA_EN <= '1';
         DATA_RDWR <= '1';
         mx1_selection <= '1';
